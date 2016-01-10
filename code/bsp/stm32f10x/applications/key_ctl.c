@@ -57,14 +57,42 @@ u32 int_nu = 0;
 u8 flag =0;
 
 u8 ec11_power;      //火力0-100
-s32 ec11_power_m=100;    //旋转编码器增量
+s32 ec11_power_m=0;    //旋转编码器增量
 u16 ec11_time=0;      //时间，分最大180分（3小时）
 u16 ec11_time_m=100;          //旋转编码器增量
+
+
+
+
+void EXTI9_5_int(u8 mode)
+{
+	NVIC_InitTypeDef   NVIC_InitStructure;
+
+  /* Enable and set EXTI9_5 Interrupt to the lowest priority */
+  NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x0F;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0x0F;
+
+  if(mode)
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+else
+	
+  NVIC_InitStructure.NVIC_IRQChannelCmd = DISABLE;
+
+  NVIC_Init(&NVIC_InitStructure);
+
+}
+
+
 
 void ec11_key_interrupt(void)
 {  
 //   u8 ss_m;
 //按键中断**********************************************************
+	static rt_tick_t ec11cnt = 0;
+		rt_tick_t ec11cnt_cru=0;
+
+		
 
 	if((EXTI_GetITStatus(EXTI_Line7) != RESET))
 	{
@@ -80,23 +108,65 @@ void ec11_key_interrupt(void)
 	    EXTI_ClearITPendingBit(EXTI_Line8);
 	}
 	
-	if(int_nu==0 && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
+	if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
 	{
-	    flag=0;
-	    if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8)))    
-			flag=1;  //根据B相，设定标志
-	    int_nu=1;             //中断计数
-	}
-	  
-	if(int_nu && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7)))      //第二次中断，并且A相是上升沿
-	{
-		if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0) && flag==1) 
-			--ec11_power_m;
-		if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8)) && flag==0)    
-			++ec11_power_m;
-		int_nu=0;               //中断计数复位，准备下一次
+	    if(int_nu==0)
+	    	{
+			if(flag==0)
+				int_nu = 1;
+
+		}
+		else 
+			{
+			if(int_nu==2)
+				flag = 1;
+			else
+				{
+				int_nu=0;
+			}
+		}
+		//EXTI9_5_int(0); 
 	}
 
+	else 
+    if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) 
+	{
+		  if(int_nu==0)
+	    	{
+			if(flag==0)
+				int_nu = 2;
+
+		}
+		  else
+		  	{
+				if(int_nu==1)
+					{
+					flag = 2;
+				}
+				else 
+					int_nu = 0;
+		  }
+		
+	}
+
+
+	if(flag==1)
+		{
+		--ec11_power_m;
+		flag = 0;
+		int_nu = 0;
+
+	}
+	else if(flag==2)
+		{
+
+	++ec11_power_m;
+	flag = 0;
+	int_nu = 0;
+
+	}
+
+	
 }
 
 
@@ -162,6 +232,7 @@ void EXTI9_5_Config(void)
 }
 
 
+
 //旋钮 1
 void key_2_pin_init(void)
 {
@@ -209,16 +280,36 @@ u8 key2_press_check(void)
 //0,press; 1,no press
 u8 key_sw22_check(void)
 {
-
+	static u8 key_sw22_pre=0;
+	
 	if(GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_3) == 0)
 	{
-		rt_thread_delay(20);
+		rt_thread_delay(10);
 
 			if(GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_3) == 0)
-				return 0;
-	}
+			{
+				key_sw22_pre = 1;
+				return key_sw22_pre;
 
-	return 1;
+			}
+	}
+	else
+	{
+		if(key_sw22_pre == 1)
+		{
+			key_sw22_pre = 0x10;
+			return key_sw22_pre;
+		}
+		else
+			{
+			key_sw22_pre = 0;
+
+		}
+	}
+	
+
+	
+	return 0;
 }
 
 #define ADC_CHN_M 4 //为2个通道 0,1
@@ -489,12 +580,15 @@ static void joystick_handle(void)
 		{
 		prestate = 1;
 		pelcod_stop_packet_send();
+		rt_thread_delay(40);
 		}
 	}
 	else
 	{
 		prestate = 0;
 		pelcod_lrud_pre_packet_send(lrudcmd2,lrspeed, udspeed);
+		
+		rt_thread_delay(40);
 	}
 	
 }
@@ -573,8 +667,8 @@ u16 zoom_key_val,focus_key_val;
 #define	FOCUS_VOL_MID_MIN		1500
 #define	FOCUS_VOL_PER_LEVEL_VOL		100
 
-s8 zoom_speed_dir = 0;
-s8 focus_speed_dir = 0;
+s16 zoom_speed_dir = 0;
+s16 focus_speed_dir = 0;
 
 static u16  Get_zoom_focus_key_Value(void)
 {
@@ -622,7 +716,7 @@ static u16  Get_zoom_focus_key_Value(void)
 		focus_speed_dir = 0;
 
 	}
-	else if(ztmp < FOCUS_VOL_MID_MIN)
+	else if(ftmp < FOCUS_VOL_MID_MIN)
 	{
 		focus_speed_dir = -((FOCUS_VOL_MID_MIN - ftmp)/FOCUS_VOL_PER_LEVEL_VOL + 1);
 	}
@@ -646,13 +740,13 @@ void zoomfocus_key_handle(void)
 
 	if(zoom_speed_dir > 0 )
 	{
-		pelcod_zf_packet_send(1,1);
+		pelcod_zf_packet_send(1,zoom_speed_dir);
 		osd_opt_message_disp(6,1);
 
 	}
 	else if(zoom_speed_dir < 0)
 	{
-		pelcod_zf_packet_send(2,1);
+		pelcod_zf_packet_send(2,abs(zoom_speed_dir));
 
 		osd_opt_message_disp(7,1);
 	}
@@ -665,14 +759,14 @@ void zoomfocus_key_handle(void)
 
 	if(focus_speed_dir > 0 )
 	{
-				pelcod_zf_packet_send(3,1);
+				pelcod_zf_packet_send(3,focus_speed_dir);
 
 		osd_opt_message_disp(8,1);
 
 	}
 	else if(focus_speed_dir < 0)
 	{
-				pelcod_zf_packet_send(4,1);
+				pelcod_zf_packet_send(4,abs(focus_speed_dir));
 
 		osd_opt_message_disp(9,1);
 	}
@@ -890,7 +984,7 @@ u8 wait_device_reply(u8* srcdata,u8 len,u32 w_100ms)
 }
 
 
-extern u8 cmd_buff[7];
+u8 cmd_buff[7];
 
 
 u8 baudrate_to_num(u16 br)
@@ -1013,8 +1107,8 @@ void key_analyze(u16 val)
 
 	case key_to_release(KEY_MODE):
 
-		key_value_all_clear();
-		
+		if(key_num_val==0)
+			key_value_all_clear();
 		if(key_num_val > 0 && key_num_val < 9)
 		{	
 			pelcod_call_pre_packet_send((u8)key_num_val+200);
@@ -1319,18 +1413,18 @@ void rt_ec11_thread_entry(void* parameter)
 			while(1)
 			{
 
-				if(ec11_power_m > 100)  //有旋转编码，且时间闪烁
+				if(ec11_power_m > 10)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					pelcod_open_close_packet_send(0);
-					ec11_power_m = 100;
+					ec11_power_m = 0;
 				}
 
-				if(ec11_power_m < 100)  //有旋转编码，且时间闪烁
+				if(ec11_power_m < -10)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					pelcod_open_close_packet_send(1);
-					ec11_power_m = 100;
+					ec11_power_m = 0;
 				}
 				
 				if(key2_press_check() == 0)
@@ -1345,31 +1439,43 @@ void rt_ec11_thread_entry(void* parameter)
 		}
 		else
 		{
-			if(ec11_power_m > EC11_XN_NUMS_VAL)  //有旋转编码，且时间闪烁
-			{
-				//ec11_power_m=100;
-				pelcod_open_close_packet_send(0);
-				pelcod_open_close_packet_send(0);
-				ec11_power_m = EC11_XN_NUMS_VAL;
-			}
+			if(ec11_power_m > 0)  //有旋转编码，且时间闪烁
+				{
+					//ec11_power_m=100;
+					//EXTI9_5_int(0);
+					pelcod_open_close_packet_send(0);
+					ec11_power_m = 0;
+					rt_thread_delay(200);
+					pelcod_stop_packet_send();
 
-			if(ec11_power_m < EC11_XN_NUMS_VAL)  //有旋转编码，且时间闪烁
-			{
-				//ec11_power_m=100;
-				pelcod_open_close_packet_send(1);
-				pelcod_open_close_packet_send(1);
-				ec11_power_m = EC11_XN_NUMS_VAL;
-			}
+					//EXTI9_5_int(1);
+				}
 
+				if(ec11_power_m < 0)  //有旋转编码，且时间闪烁
+				{
+					//ec11_power_m=100;
+					//EXTI9_5_int(0);
+					pelcod_open_close_packet_send(1);
+					ec11_power_m = 0;
+					rt_thread_delay(200);
+					pelcod_stop_packet_send();
+					//EXTI9_5_int(1);
+				}
+				
 		}
 
-
-		if(key_sw22_check() == 0)
+		k = key_sw22_check();
+		if(k==1)
 		{
 			pelcod_open_close_packet_send(0);
 		}
-		
-		rt_thread_delay(60);
+		else if(k==0x10)
+			{
+
+		pelcod_stop_packet_send();
+
+		}
+		rt_thread_delay(40);
     }
 }
 

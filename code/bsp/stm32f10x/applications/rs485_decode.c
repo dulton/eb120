@@ -257,8 +257,12 @@ void rs485_data_init(void)
 }
 
 
+rt_mutex_t rs485_send_mut = RT_NULL;
+
 rt_err_t rs485_send_data(u8* data,u16 len)
 {
+	rt_mutex_take(rs485_send_mut,RT_WAITING_FOREVER);
+	
 	RS485_TX_ENABLE;
 	if(uart1_dev_my->device == RT_NULL)	
 	{
@@ -267,9 +271,10 @@ rt_err_t rs485_send_data(u8* data,u16 len)
 	
 	rt_device_write(uart1_dev_my->device, 0, data, len);
 
-	rt_thread_delay (100);
+	rt_thread_delay (80);
 	RS485_RX_ENABLE;
-		
+
+	rt_mutex_release(rs485_send_mut);
 	return RT_EOK;
 }
 
@@ -277,8 +282,12 @@ int rs485_system_init(void)
 {
     rt_err_t result;
     rt_thread_t init_thread;
-	
+
+	rs485_send_mut = rt_mutex_create("rs485mut",RT_IPC_FLAG_FIFO);
+		
 	rs485_data_init();	
+	
+
 
     uart1_dev_my = (struct _uart_dev_my*)rt_malloc(sizeof(struct _uart_dev_my));
     if (uart1_dev_my == RT_NULL)
