@@ -25,11 +25,19 @@ const u8 *iris_msg_string[IRIS_MSG_ITERMS_MAX]=
 };
 
 
+const u8 *filter_string[]=
+{
+{" Day "},
+{"Night"},
+{"Fog1 "},
+{"Fog2 "},
+{"     "},
+};
 
 
-#define	OPT_MSG_ITERMS_MAX		15
+#define	OPT_MSG_ITERMS_MAX		25
 
-const u8 *opt_msg_string[OPT_MSG_ITERMS_MAX]=
+const u8 *opt_msg_string[]=
 {
 {"CALL done!"},
 {"PRESET done!"},
@@ -45,6 +53,21 @@ const u8 *opt_msg_string[OPT_MSG_ITERMS_MAX]=
 {"Near"},
 
 	{"set id!"},
+
+{" Day "},//11
+{"Night"},
+{"Fog1 "},
+{"Fog2 "},
+{"     "},
+
+
+{"Auto"},//16
+{" AV "},
+{" TV "},
+{"Man "},
+{"    "},
+
+
 
 };
 
@@ -98,14 +121,6 @@ const u8 *baudrate_string[]=
 };
 
 
-const u8 *filter_string[]=
-{
-{" Day "},
-{"Night"},
-{"Fog1 "},
-{"Fog2 "},
-{"     "},
-};
 
 
 #define	OSD_LINE1_X_POS		0
@@ -209,9 +224,11 @@ void osd_set_para_disp_line_1(u8 item)
 {
 	if(item==1)
 	{
+
 			osd_para_mode_disp_xy(cam_para_mode,0,0);
 
 	}
+
 	else if(item ==2 )
 	{
 		osd_iris_mode_disp_xy(iris_mode,0,0);

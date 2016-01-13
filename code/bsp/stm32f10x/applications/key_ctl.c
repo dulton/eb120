@@ -83,8 +83,10 @@ else
 
 }
 
+//u16 pp7l=0,pp7h=0;
 
 
+#if 1
 void ec11_key_interrupt(void)
 {  
 //   u8 ss_m;
@@ -93,10 +95,51 @@ void ec11_key_interrupt(void)
 		rt_tick_t ec11cnt_cru=0;
 
 		
-
+	static rt_uint8_t pulse_state_bak = 0;
+	
+	
 	if((EXTI_GetITStatus(EXTI_Line7) != RESET))
 	{
 
+		if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
+		{
+			if(pulse_state_bak == 0)
+				pulse_state_bak = 7;
+			else if(pulse_state_bak == 0x08)
+			{
+				pulse_state_bak = 0;
+	
+				flag = 1;
+			}
+			else
+			{
+				pulse_state_bak = 0x07;
+				flag = 0;
+				--ec11_power_m;
+			}
+
+			//pp7l++;
+		}
+		else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7))) 
+		{
+	
+			if(pulse_state_bak == 0)
+					pulse_state_bak = 0x77;
+			else if(pulse_state_bak == 0x88)
+			{
+				flag = 1;
+				pulse_state_bak = 0;
+			}
+			else
+			{
+				pulse_state_bak = 0x77;
+				flag = 0;
+				--ec11_power_m;
+			}
+	
+			//pp7h++;
+		}
+		
 
 	/* Clear the  EXTI line 8 pending bit */
 		EXTI_ClearITPendingBit(EXTI_Line7);
@@ -104,71 +147,107 @@ void ec11_key_interrupt(void)
 
     if((EXTI_GetITStatus(EXTI_Line8) != RESET))
 	{
-	    /* Clear the  EXTI line 8 pending bit */
-	    EXTI_ClearITPendingBit(EXTI_Line8);
-	}
-	
-	if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
-	{
-	    if(int_nu==0)
-	    	{
-			if(flag==0)
-				int_nu = 1;
 
-		}
-		else 
+		if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) 
+		{
+			if(pulse_state_bak == 0)
+						pulse_state_bak = 0x08;
+			else if(pulse_state_bak == 0x07)
 			{
-			if(int_nu==2)
-				flag = 1;
+				flag = 2;
+				pulse_state_bak = 0;
+			}
 			else
-				{
-				int_nu=0;
+			{
+				pulse_state_bak = 0x08;
+				flag = 0;
+				++ec11_power_m;
 			}
 		}
-		//EXTI9_5_int(0); 
-	}
+		else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8))) 
+		{
+			if(pulse_state_bak == 0)
+					pulse_state_bak = 0x88;
+			else if(pulse_state_bak == 0x77)
+			{
+				flag = 2;
+				pulse_state_bak = 0;
 
-	else 
-    if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) 
-	{
-		  if(int_nu==0)
-	    	{
-			if(flag==0)
-				int_nu = 2;
+				}
+			else
+			{
+				pulse_state_bak = 0x88;
+				flag = 0;
+				++ec11_power_m;
+			}
+
 
 		}
-		  else
-		  	{
-				if(int_nu==1)
-					{
-					flag = 2;
-				}
-				else 
-					int_nu = 0;
-		  }
-		
+	
+	/* Clear the  EXTI line 8 pending bit */
+		EXTI_ClearITPendingBit(EXTI_Line8);
 	}
+	
+	
 
+	
 
+		
 	if(flag==1)
-		{
+	{
 		--ec11_power_m;
+		flag = 0;
+		int_nu = 0;
+		pulse_state_bak = 0;
+
+	}
+	else if(flag==2)
+	{
+		pulse_state_bak = 0;
+		++ec11_power_m;
 		flag = 0;
 		int_nu = 0;
 
 	}
-	else if(flag==2)
-		{
 
-	++ec11_power_m;
-	flag = 0;
-	int_nu = 0;
 
-	}
 
-	
 }
 
+#else
+void ec11_key_interrupt(void)
+{  
+//   u8 ss_m;
+//按键中断**********************************************************
+	static rt_tick_t ec11cnt = 0;
+		rt_tick_t ec11cnt_cru=0;
+
+		
+	static rt_uint8_t pulse_state_bak = 0;
+	
+	
+	if((EXTI_GetITStatus(EXTI_Line7) != RESET))
+	{
+
+		if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
+		{
+
+			pp7l++;
+		}
+		else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7))) 
+		{
+	
+
+			pp7h++;
+		}
+		
+
+	/* Clear the  EXTI line 8 pending bit */
+		EXTI_ClearITPendingBit(EXTI_Line7);
+	}
+
+}
+#endif
 
 
 
@@ -201,6 +280,7 @@ void EXTI9_5_Config(void)
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
 
   /* Configure PB.09 pin as input floating */
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7|GPIO_Pin_8;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
   GPIO_Init(GPIOB, &GPIO_InitStructure);
@@ -214,7 +294,7 @@ void EXTI9_5_Config(void)
   /* Configure EXTI9 line */
   EXTI_InitStructure.EXTI_Line = EXTI_Line7;
   EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
+  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
   EXTI_InitStructure.EXTI_LineCmd = ENABLE;
   EXTI_Init(&EXTI_InitStructure);
  
@@ -223,9 +303,9 @@ void EXTI9_5_Config(void)
 
   /* Enable and set EXTI9_5 Interrupt to the lowest priority */
   NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x0F;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0x0F;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x01;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0x00;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;//DISABLE;//ENABLE;
 
   NVIC_Init(&NVIC_InitStructure);
 
@@ -930,7 +1010,7 @@ u16 key_num_val = 0;
 
 u8 osd_mid_buff_pointer=0;
 
-#define	OSD_MSG_DISP_MAX_SECOND		3
+#define	OSD_MSG_DISP_MAX_SECOND		40
 
 #define	key_to_long(val)	(val|0x9000)
 #define	key_to_release(val)	(val|0x8000)
@@ -1083,25 +1163,30 @@ void key_analyze(u16 val)
 		}
 		break;
 	case key_to_release(KEY_IRIS):
-		key_value_all_clear();
-		//if(iris_mode_setup)
+		if(key_num_val==0)
+			key_value_all_clear();
+		if(key_num_val > 0 && key_num_val < 5)
 		{
-			iris_mode++;
-			if(iris_mode>3)
-				iris_mode=0;
-			//osd_line2_disp(iris_mode);
-			osd_set_para_disp_line_1(2);
-			iris_set_ok = 0;
-		}
-
-		if(key_val_buffer_func == 0 || key_val_buffer_func == key_to_release(KEY_IRIS))
-		{
-			if(key_val_buffer_cnt == 0)
+			
 			{
-				//osd_mid_buff[] = ;
-				key_val_buffer_func = key_to_release(KEY_IRIS);
+				iris_mode = key_num_val-1;
+				if(iris_mode>3)
+					iris_mode=0;
+
+				if(iris_mode==0)
+					pelcod_set_pre_packet_send(128);
+				else if(iris_mode==1)
+					pelcod_call_pre_packet_send(128);
+				else if(iris_mode==2)
+					pelcod_call_pre_packet_send(127);
+				else if(iris_mode==3)
+					pelcod_call_pre_packet_send(126);
+				osd_line2_disp(1);
+				osd_opt_message_disp(16+iris_mode,OSD_MSG_DISP_MAX_SECOND);
+			key_value_all_clear();
 			}
 
+			
 		}
 		break;
 
@@ -1149,7 +1234,7 @@ void key_analyze(u16 val)
 				osd_line3_disp(1);
 				osd_opt_message_disp(2,OSD_MSG_DISP_MAX_SECOND);
 				
-				if(wait_device_reply(cmd_buff,7,30))
+				if(wait_device_reply(cmd_buff,7,OSD_MSG_DISP_MAX_SECOND))
 				{
 					;//osd_opt_message_disp(2,OSD_MSG_DISP_MAX_SECOND);
 
@@ -1214,15 +1299,18 @@ void key_analyze(u16 val)
 		break;
 
 	case key_to_release(KEY_FILTER):
-		key_value_all_clear();
-			key_val_buffer_func = key_to_release(KEY_FILTER);
-			cam_filter_mode++;
-			if(cam_filter_mode>3)
-				cam_filter_mode = 0;
-			cam_filter_set_ok = 0;
-			//osd_line2_disp(1);
-			osd_set_para_disp_line_1(3);
+		if(key_num_val==0)
+			key_value_all_clear();
+		if(key_num_val > 0 && key_num_val < 5)
+		{
+			cam_filter_mode = key_num_val-1;
+			pelcod_call_pre_packet_send(cam_filter_mode+80);
+				osd_line2_disp(1);
+				cam_filter_set_ok = 1;
 
+				osd_opt_message_disp(11+cam_filter_mode,OSD_MSG_DISP_MAX_SECOND);
+			key_value_all_clear();
+		}
 		break;
 	case key_to_long(KEY_SETUP):
 		switch(key_num_val )
@@ -1399,6 +1487,97 @@ void rt_key_thread_entry(void* parameter)
 
 #define	EC11_XN_NUMS_VAL	90
 
+void ec11_check_handle(void)
+{  
+//   u8 ss_m;
+//按键中断**********************************************************
+	static rt_tick_t ec11cnt = 0;
+		rt_tick_t ec11cnt_cru=0;
+
+		
+	static rt_uint8_t pulse_state_bak = 0;
+	
+while(1)
+{
+	
+	if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 0))   //第一次中断，并且A相是下降沿
+	{
+		if(pulse_state_bak == 0)
+			pulse_state_bak = 7;
+		else if(pulse_state_bak == 0x08)
+			flag = 1;
+		else
+		{
+			pulse_state_bak = 0;
+			flag = 0;
+		}
+
+	}
+	else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) 
+	{
+		if(pulse_state_bak == 0)
+					pulse_state_bak = 0x08;
+		else if(pulse_state_bak == 0x07)
+					flag = 2;
+		else
+		{
+			pulse_state_bak = 0;
+			flag = 0;
+		}
+	}
+	else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_7) == 1)) 
+	{
+
+		if(pulse_state_bak == 0)
+				pulse_state_bak = 0x77;
+		else if(pulse_state_bak == 0x88)
+				flag = 1;
+
+		else
+		{
+			pulse_state_bak = 0;
+			flag = 0;
+		}
+
+		
+	}
+	else if((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) 
+	{
+		if(pulse_state_bak == 0)
+				pulse_state_bak = 0x88;
+		else if(pulse_state_bak == 0x77)
+				flag = 2;
+		else
+		{
+			pulse_state_bak = 0;
+			flag = 0;
+		}
+
+
+	}
+
+		
+	if(flag==1)
+	{
+		--ec11_power_m;
+		flag = 0;
+		int_nu = 0;
+
+	}
+	else if(flag==2)
+	{
+
+		++ec11_power_m;
+		flag = 0;
+		int_nu = 0;
+
+	}
+}
+
+}
+
+
+
 void rt_ec11_thread_entry(void* parameter)
 {
 
@@ -1413,14 +1592,14 @@ void rt_ec11_thread_entry(void* parameter)
 			while(1)
 			{
 
-				if(ec11_power_m > 10)  //有旋转编码，且时间闪烁
+				if(ec11_power_m > 1)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					pelcod_open_close_packet_send(0);
 					ec11_power_m = 0;
 				}
 
-				if(ec11_power_m < -10)  //有旋转编码，且时间闪烁
+				if(ec11_power_m < -1)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					pelcod_open_close_packet_send(1);
@@ -1429,6 +1608,7 @@ void rt_ec11_thread_entry(void* parameter)
 				
 				if(key2_press_check() == 0)
 				{
+					pelcod_stop_packet_send();
 					break;
 
 				}
@@ -1439,25 +1619,25 @@ void rt_ec11_thread_entry(void* parameter)
 		}
 		else
 		{
-			if(ec11_power_m > 0)  //有旋转编码，且时间闪烁
+			if(ec11_power_m > 1)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					//EXTI9_5_int(0);
 					pelcod_open_close_packet_send(0);
 					ec11_power_m = 0;
-					rt_thread_delay(200);
+					rt_thread_delay(50);
 					pelcod_stop_packet_send();
 
 					//EXTI9_5_int(1);
 				}
 
-				if(ec11_power_m < 0)  //有旋转编码，且时间闪烁
+				if(ec11_power_m < -1)  //有旋转编码，且时间闪烁
 				{
 					//ec11_power_m=100;
 					//EXTI9_5_int(0);
 					pelcod_open_close_packet_send(1);
 					ec11_power_m = 0;
-					rt_thread_delay(200);
+					rt_thread_delay(50);
 					pelcod_stop_packet_send();
 					//EXTI9_5_int(1);
 				}
